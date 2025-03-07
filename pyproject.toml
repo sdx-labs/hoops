@@ -1,0 +1,52 @@
+[project]
+name = "hoops"
+version = "0.1.0"
+description = "Predicting NCAA basketball tournament outcomes using machine learning"
+readme = "README.md"
+requires-python = ">=3.8,<3.10"  # Restrict to Python <3.10 for llvmlite compatibility
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.22.0",
+    "scikit-learn>=1.0.0",
+    "xgboost>=1.7.0",
+    "lightgbm>=4.0.0",
+    "matplotlib>=3.5.0",
+    "seaborn>=0.12.0",
+    "jupyter>=1.0.0",
+    "optuna>=3.0.0",           # For hyperparameter tuning
+    "shap>=0.41.0,<0.42.0",    # Version compatible with Python 3.9
+    "kaggle>=1.5.0",           # For Kaggle API access
+    "basketball_reference_web_scraper",
+    "requests>=2.28.0",
+    "beautifulsoup4>=4.11.0",
+    "lxml>=4.9.0",
+    "fuzzywuzzy>=0.18.0",      # For team name matching
+    "python-Levenshtein>=0.20.9",  # For faster fuzzy matching
+    "pyyaml>=6.0",             # For config file parsing
+    "tqdm>=4.65.0",            # For progress bars
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "jupyterlab>=3.6.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 88
+target-version = ['py39']  # Changed to py39 for compatibility
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.pytest]
+testpaths = ["tests"]
+python_files = "test_*.py"
