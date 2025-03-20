@@ -148,37 +148,64 @@ def main(
     X, y = prepare_model_data(historical_matchups)
     print(f"Training data shape: {X.shape}")
     
-    # 4b. Feature selection
-    print("Selecting most important features...")
-    selected_features, importances = select_features(X, y, n_features=50)
-    print(f"Selected {len(selected_features)} features")
-    
-    # 4c. Train models
-    print("Training ensemble model...")
-    X_selected = X[selected_features]
-    ensemble_model, trained_models, metrics, cv_results = train_ensemble(X_selected, y)
-    
-    # 4d. Save models
-    models_dir = os.path.join(output_path, 'models')
-    os.makedirs(models_dir, exist_ok=True)
-    
-    for model_name, model in trained_models.items():
-        model_path = os.path.join(models_dir, f"{model_name}_model.pkl")
-        save_model(model, model_path, model_name)
-    
-    # Save ensemble
-    ensemble_path = os.path.join(models_dir, "ensemble_model.pkl")
-    save_model(ensemble_model, ensemble_path, "ensemble")
-    
-    # Save feature list
-    feature_path = os.path.join(models_dir, "selected_features.csv")
-    pd.DataFrame({
-        'Feature': selected_features,
-        'Importance': importances[np.argsort(importances)[::-1]][:len(selected_features)]
-    }).to_csv(feature_path, index=False)
+    # Handle empty dataset scenario
+    if len(X) == 0 or len(np.unique(y)) < 2:
+        print("CRITICAL ERROR: Insufficient data for training models")
+        print("Using a baseline model that predicts 0.5 probability for all matchups")
+        
+        # Create a baseline model class
+        class BaselineModel:
+            def predict_proba(self, X):
+                n_samples = len(X)
+                return np.column_stack([np.full(n_samples, 0.5), np.full(n_samples, 0.5)])
+            
+            def predict(self, X):
+                return np.full(len(X), 0.5)
+        
+        # Skip the regular model training and use baseline
+        ensemble_model = BaselineModel()
+        selected_features = X.columns.tolist()
+        metrics = {'accuracy': 0.5, 'log_loss': 0.693, 'brier_score': 0.25}
+    else:
+        # 4b. Feature selection
+        print("Selecting most important features...")
+        print(f"Input features available: {X.columns.tolist()[:10]}... (and {len(X.columns)-10} more)")
+        print(f"Feature stats: min={X.min().min()}, max={X.max().max()}, mean={X.mean().mean()}")
+        
+        selected_features, importances = select_features(X, y, n_features=50)
+        print(f"Selected {len(selected_features)} features")
+        print("Top 10 features:")
+        for i, feature in enumerate(selected_features[:10]):
+            print(f"  {i+1}. {feature} - {importances[i]:.4f}")
+        
+        # 4c. Train models
+        print("Training ensemble model...")
+        X_selected = X[selected_features]
+        ensemble_model, trained_models, metrics, cv_results = train_ensemble(X_selected, y)
+        
+        # 4d. Save models
+        models_dir = os.path.join(output_path, 'models')
+        os.makedirs(models_dir, exist_ok=True)
+        
+        for model_name, model in trained_models.items():
+            model_path = os.path.join(models_dir, f"{model_name}_model.pkl")
+            save_model(model, model_path, model_name)
+        
+        # Save ensemble
+        ensemble_path = os.path.join(models_dir, "ensemble_model.pkl")
+        save_model(ensemble_model, ensemble_path, "ensemble")
+        
+        # Save feature list
+        feature_path = os.path.join(models_dir, "selected_features.csv")
+        pd.DataFrame({
+            'Feature': selected_features,
+            'Importance': importances[np.argsort(importances)[::-1]][:len(selected_features)]
+        }).to_csv(feature_path, index=False)
     
     # 5. Generate tournament predictions
     print("\n--- Generating tournament predictions ---")
+    print(f"Selected features shape: {X_selected.shape}")
+    print(f"Top features statistics: {X_selected[selected_features[:5]].describe().loc['mean']}")
     X_tourney = tournament_matchups[selected_features]
     
     # 5a. Individual model predictions

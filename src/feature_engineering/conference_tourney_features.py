@@ -25,14 +25,24 @@ def build_conference_tourney_features(kaggle_data, seasons=range(2001, 2025)):
         for conf in conferences:
             conf_games = season_games[season_games['ConfAbbrev'] == conf]
             
+            if len(conf_games) == 0:
+                continue  # Skip empty conferences
+            
             # Get all teams in this conference tournament
             winning_teams = set(conf_games['WTeamID'].unique())
             losing_teams = set(conf_games['LTeamID'].unique())
             all_teams = winning_teams.union(losing_teams)
             
             # Get the champion (team that won the last game)
-            last_day = conf_games['DayNum'].max()
-            champion = conf_games[conf_games['DayNum'] == last_day]['WTeamID'].iloc[0]
+            try:
+                last_day = conf_games['DayNum'].max()
+                last_games = conf_games[conf_games['DayNum'] == last_day]
+                if len(last_games) > 0:
+                    champion = last_games['WTeamID'].iloc[0]
+                else:
+                    champion = None  # No games found on last day
+            except (IndexError, KeyError):
+                champion = None  # Error finding champion
             
             # Process each team
             for team_id in all_teams:

@@ -7,10 +7,30 @@ def load_kaggle_data(data_path='/Volumes/MINT/projects/model/data/kaggle-data'):
     Load all CSV files from the Kaggle data directory into a dictionary
     """
     data = {}
+    
+    # Check if directory exists
+    if not os.path.exists(data_path):
+        print(f"ERROR: Kaggle data directory not found at {data_path}")
+        return data
+    
+    # Check for essential files
+    essential_files = ['MTeams.csv', 'WTeams.csv']
+    missing_files = [f for f in essential_files if not os.path.exists(os.path.join(data_path, f))]
+    
+    if missing_files:
+        print("ERROR: Missing essential Kaggle data files:")
+        for file in missing_files:
+            print(f"  - {file}")
+        print("Please download the required files before proceeding.")
+    
+    # Load all available CSV files
     for file_path in glob.glob(os.path.join(data_path, '*.csv')):
         file_name = os.path.splitext(os.path.basename(file_path))[0]
-        data[file_name] = pd.read_csv(file_path)
-        print(f"Loaded {file_name} with shape {data[file_name].shape}")
+        try:
+            data[file_name] = pd.read_csv(file_path)
+            print(f"Loaded {file_name} with shape {data[file_name].shape}")
+        except Exception as e:
+            print(f"ERROR loading {file_name}: {str(e)}")
     
     return data
 
@@ -19,11 +39,23 @@ def load_kenpom_data(data_path='/Volumes/MINT/projects/model/data/kenpom/histori
     Load KenPom historical data
     """
     if os.path.exists(data_path):
-        kenpom_data = pd.read_csv(data_path)
-        print(f"Loaded KenPom data with shape {kenpom_data.shape}")
-        return kenpom_data
+        try:
+            kenpom_data = pd.read_csv(data_path)
+            print(f"Loaded KenPom data with shape {kenpom_data.shape}")
+            
+            # Verify it has some expected columns
+            expected_cols = ['Season', 'Year', 'TeamID', 'Team']
+            found_cols = [col for col in expected_cols if col in kenpom_data.columns]
+            if not found_cols:
+                print("WARNING: KenPom data doesn't contain any standard columns")
+                
+            return kenpom_data
+        except Exception as e:
+            print(f"ERROR loading KenPom data: {str(e)}")
+            return None
     else:
-        print("KenPom data file not found.")
+        print(f"KenPom data file not found at: {data_path}")
+        print("The pipeline can run without KenPom data, but performance may be reduced.")
         return None
 
 def load_additional_data(data_path='/Volumes/MINT/projects/model/data/additional-data'):

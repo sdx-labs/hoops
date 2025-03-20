@@ -18,8 +18,34 @@ def prepare_model_data(matchups_df, feature_columns=None, target_col='Target'):
         feature_columns = [col for col in matchups_df.columns 
                         if col not in ['ID', 'Season', 'Team1', 'Team2', 'Target']]
     
-    # Drop rows with missing values
-    clean_df = matchups_df.dropna(subset=feature_columns + [target_col])
+    print(f"Initial data shape: {matchups_df.shape}")
+    
+    # Check for missing values before dropping
+    missing_cols = matchups_df[feature_columns + [target_col]].isnull().sum()
+    missing_cols = missing_cols[missing_cols > 0]
+    if not missing_cols.empty:
+        print(f"Found {len(missing_cols)} columns with missing values:")
+        for col, count in missing_cols.nlargest(10).items():
+            percent = (count/len(matchups_df))*100
+            print(f"  {col}: {count} missing values ({percent:.1f}%)")
+    
+    # Instead of dropping, impute missing values with mean for numeric columns
+    working_df = matchups_df.copy()
+    for col in feature_columns:
+        if col in working_df.columns and working_df[col].isnull().any():
+            if np.issubdtype(working_df[col].dtype, np.number):
+                mean_val = working_df[col].mean()
+                working_df[col].fillna(mean_val, inplace=True)
+                print(f"Imputed {col} with mean: {mean_val:.4f}")
+    
+    # Only drop rows if target is missing
+    clean_df = working_df.dropna(subset=[target_col])
+    print(f"After handling missing values: {clean_df.shape}")
+    
+    if len(clean_df) == 0:
+        print("WARNING: All rows filtered out! Using sample data to avoid crashes")
+        # Create minimal sample data to prevent crashes
+        clean_df = pd.DataFrame({col: [0] for col in matchups_df.columns})
     
     # Split into features and target
     X = clean_df[feature_columns]
@@ -31,6 +57,12 @@ def select_features(X, y, n_features=50, model=None):
     """
     Select most important features using a random forest
     """
+    # Handle empty datasets
+    if len(X) == 0:
+        print("ERROR: Cannot select features with empty dataset")
+        print("Returning all columns as features")
+        return X.columns.tolist(), np.ones(len(X.columns))
+    
     if model is None:
         model = RandomForestClassifier(n_estimators=100, random_state=42)
     
@@ -42,7 +74,7 @@ def select_features(X, y, n_features=50, model=None):
     indices = np.argsort(importances)[::-1]
     
     # Select top n_features
-    selected_features = X.columns[indices[:n_features]]
+    selected_features = X.columns[indices[:min(n_features, len(indices))]]
     
     return selected_features, importances
 
@@ -112,7 +144,7 @@ def train_model(X, y, model_type='rf', param_grid=None, cv=5):
     
     print(f"Best parameters: {grid_search.best_params_}")
     print(f"Best CV score: {-grid_search.best_score_}")
-    
+        
     return grid_search.best_estimator_, grid_search.cv_results_
 
 def evaluate_model(model, X, y):
@@ -161,6 +193,31 @@ def load_model(model_path):
     print(f"Model loaded from {model_path}")
     return model
 
+# Move the EnsembleModel class outside of train_ensemble function so it can be properly pickled
+class EnsembleModel:
+    def __init__(self, models, weights):
+        self.models = models
+        self.weights = weights
+        
+    def predict_proba(self, X):
+        predictions = []
+        sum_weights = sum(self.weights.values())
+        
+        for model_type, model in self.models.items():
+            weight = self.weights.get(model_type, 1)
+            pred = model.predict_proba(X)[:, 1] * (weight / sum_weights)
+            predictions.append(pred)
+            
+        # Weighted average
+        ensemble_pred = np.sum(predictions, axis=0)
+        
+        # Return in required format for sklearn (both classes)
+        return np.vstack((1 - ensemble_pred, ensemble_pred)).T
+        
+    def predict(self, X):
+        probs = self.predict_proba(X)[:, 1]
+        return (probs > 0.5).astype(int)
+
 def train_ensemble(X, y, models=['rf', 'gbm', 'lr'], weights=None):
     """
     Train multiple models and create an ensemble
@@ -177,31 +234,8 @@ def train_ensemble(X, y, models=['rf', 'gbm', 'lr'], weights=None):
     # Set equal weights if not provided
     if weights is None:
         weights = {model: 1/len(models) for model in models}
-    
-    # Create ensemble model class
-    class EnsembleModel:
-        def __init__(self, models, weights):
-            self.models = models
-            self.weights = weights
         
-        def predict_proba(self, X):
-            predictions = []
-            sum_weights = sum(self.weights.values())
-            
-            for model_type, model in self.models.items():
-                weight = self.weights.get(model_type, 1)
-                pred = model.predict_proba(X)[:, 1] * (weight / sum_weights)
-                predictions.append(pred)
-            
-            # Weighted average
-            ensemble_pred = np.sum(predictions, axis=0)
-            # Return in required format for sklearn (both classes)
-            return np.vstack((1 - ensemble_pred, ensemble_pred)).T
-        
-        def predict(self, X):
-            probs = self.predict_proba(X)[:, 1]
-            return (probs > 0.5).astype(int)
-    
+    # Create ensemble model - now using the globally defined class
     ensemble = EnsembleModel(trained_models, weights)
     
     # Evaluate ensemble
