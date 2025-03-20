@@ -185,3 +185,6 @@ wheels/
 # Virtual environments
 .venv
 >>>>>>> 30cd29f (first)
+
+kaggle.txt 
+data/
